@@ -80,8 +80,8 @@ public class MainActivity extends AppCompatActivity {
 
             try {
                 imageBitmap = MediaStore.Images.Media.getBitmap(cr, selectedImage);
-                int scaleDownPercentage = 50;
-                imageBitmap = getResizedBitmap(imageBitmap, (imageBitmap.getWidth() * scaleDownPercentage) / 100, (imageBitmap.getHeight() * scaleDownPercentage) / 100);
+                int nh = (int) ( imageBitmap.getHeight() * (512.0 / imageBitmap.getWidth()) ); //Calculate height of scaled-down bitmap
+                imageBitmap = Bitmap.createScaledBitmap(imageBitmap, 512, nh, true);
                 mImageView.setImageBitmap(imageBitmap);
             } catch (Exception e) {
                 Log.e(LOGTAG, e.toString());
@@ -104,23 +104,6 @@ public class MainActivity extends AppCompatActivity {
         if (intent.resolveActivity(getPackageManager()) != null) {
             startActivityForResult(intent, REQUEST_IMAGE_CAPTURE);
         }
-    }
-
-    public Bitmap getResizedBitmap(Bitmap bm, int newWidth, int newHeight) {
-        int width = bm.getWidth();
-        int height = bm.getHeight();
-        float scaleWidth = ((float) newWidth) / width;
-        float scaleHeight = ((float) newHeight) / height;
-        // CREATE A MATRIX FOR THE MANIPULATION
-        Matrix matrix = new Matrix();
-        // RESIZE THE BIT MAP
-        matrix.postScale(scaleWidth, scaleHeight);
-
-        // "RECREATE" THE NEW BITMAP
-        Bitmap resizedBitmap = Bitmap.createBitmap(
-                bm, 0, 0, width, height, matrix, false);
-        bm.recycle();
-        return resizedBitmap;
     }
 
     private void deleteImg() {
