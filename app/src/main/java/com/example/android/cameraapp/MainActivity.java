@@ -1,15 +1,15 @@
 package com.example.android.cameraapp;
 
-import android.content.ContentResolver;
 import android.content.Intent;
+import android.content.pm.PackageManager;
 import android.graphics.Bitmap;
-import android.graphics.Matrix;
+import android.graphics.BitmapFactory;
 import android.net.Uri;
+import android.os.Build;
 import android.os.Bundle;
 import android.os.Environment;
 import android.provider.MediaStore;
 import android.support.design.widget.FloatingActionButton;
-import android.support.design.widget.Snackbar;
 import android.support.v7.app.AppCompatActivity;
 import android.support.v7.widget.Toolbar;
 import android.util.Log;
@@ -19,13 +19,18 @@ import android.view.MenuItem;
 import android.widget.ImageView;
 
 import java.io.File;
+import java.io.IOException;
+import java.text.SimpleDateFormat;
+import java.util.Date;
 
 public class MainActivity extends AppCompatActivity {
 
+    private static final String BITMAP = "BITMAP";
     public int REQUEST_IMAGE_CAPTURE = 1;
     private ImageView mImageView;
     private Uri imageUri;
     private String LOGTAG = "CameraApp";
+    private Bitmap mBitmap;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -38,11 +43,20 @@ public class MainActivity extends AppCompatActivity {
         fab.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View view) {
-                takePicture();
+                getPermission();
             }
         });
 
         mImageView = (ImageView) findViewById(R.id.iv);
+
+        // Check whether we're recreating a previously destroyed instance
+        if (savedInstanceState != null) {
+            // Restore value of members from saved state
+            if (savedInstanceState.containsKey(BITMAP)) {
+                mBitmap = savedInstanceState.getParcelable(BITMAP);
+                mImageView.setImageBitmap(mBitmap);
+            }
+        }
 
     }
 
@@ -72,51 +86,128 @@ public class MainActivity extends AppCompatActivity {
     @Override
     protected void onActivityResult(int requestCode, int resultCode, Intent data) {
         if (requestCode == REQUEST_IMAGE_CAPTURE && resultCode == RESULT_OK) {
-            Uri selectedImage = imageUri;
-            this.getContentResolver().notifyChange(selectedImage, null);
+            setPic();
+        }
+    }
 
-            ContentResolver cr = this.getContentResolver();
-            Bitmap imageBitmap;
+    @Override
+    public void onSaveInstanceState(Bundle savedInstanceState) {
 
+        if(mBitmap != null)
+            savedInstanceState.putParcelable(BITMAP, mBitmap);
+
+        super.onSaveInstanceState(savedInstanceState);
+    }
+
+    @Override
+    public void onRequestPermissionsResult(int permsRequestCode, String[] permissions, int[] grantResults){
+
+        switch(permsRequestCode){
+
+            case 200:
+
+                boolean writeAccepted = (grantResults[0]== PackageManager.PERMISSION_GRANTED);
+                if(writeAccepted) {
+                    takePicture();
+                }
+
+                break;
+
+        }
+
+    }
+
+    public void getPermission() {
+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+            String[] perms = {"android.permission.WRITE_EXTERNAL_STORAGE"};
+
+            int permsRequestCode = 200;
+
+            requestPermissions(perms, permsRequestCode);
+        }
+        else {
+            takePicture();
+        }
+
+    }
+
+    public void takePicture() {
+
+        Intent intent = new Intent(MediaStore.ACTION_IMAGE_CAPTURE);
+
+        // Ensure that there's a camera activity to handle the intent
+        if (intent.resolveActivity(getPackageManager()) != null) {
+            // Create the File where the photo should go
+            File photoFile = null;
             try {
-                imageBitmap = MediaStore.Images.Media.getBitmap(cr, selectedImage);
-                int nh = (int) ( imageBitmap.getHeight() * (512.0 / imageBitmap.getWidth()) ); //Calculate height of scaled-down bitmap
-                imageBitmap = Bitmap.createScaledBitmap(imageBitmap, 512, nh, true);
-                mImageView.setImageBitmap(imageBitmap);
-            } catch (Exception e) {
-                Log.e(LOGTAG, e.toString());
+                photoFile = createImageFile();
+                imageUri = Uri.fromFile(photoFile);
+            } catch (IOException ex) {
+                // Error occurred while creating the File
+                Log.e(LOGTAG, ex.getMessage());
+            }
+            // Continue only if the File was successfully created
+            if (photoFile != null) {
+                intent.putExtra(MediaStore.EXTRA_OUTPUT,
+                        Uri.fromFile(photoFile));
+                startActivityForResult(intent, REQUEST_IMAGE_CAPTURE);
+            }
+        }
+
+    }
+
+    private void deleteImg() {
+        if (imageUri != null) {
+
+            File file = new File(imageUri.getPath());
+
+            if (file.exists()) {
+                if (file.delete()) Log.d(LOGTAG, "Deleted file");
             }
         }
     }
 
-    public void takePicture() {
-        String filename = "CameraApp.png";
+    private void setPic() {
 
-        File dir = new File(Environment.getExternalStorageDirectory().toString() + "/CameraApp/");
-        if (!dir.exists()) {
-            dir.mkdir();
-        }
+        // Get the dimensions of the View
+        int targetW = mImageView.getMeasuredWidth() / 4;
+        int targetH = mImageView.getMeasuredHeight() / 4;
 
-        Intent intent = new Intent(MediaStore.ACTION_IMAGE_CAPTURE);
-        File photo = new File(dir, filename);
-        imageUri = Uri.fromFile(photo);
-        intent.putExtra(MediaStore.EXTRA_OUTPUT, imageUri);
-        if (intent.resolveActivity(getPackageManager()) != null) {
-            startActivityForResult(intent, REQUEST_IMAGE_CAPTURE);
-        }
+        // Get the dimensions of the bitmap
+        BitmapFactory.Options bmOptions = new BitmapFactory.Options();
+        bmOptions.inJustDecodeBounds = true;
+        BitmapFactory.decodeFile(imageUri.getPath(), bmOptions);
+        int photoW = bmOptions.outWidth;
+        int photoH = bmOptions.outHeight;
+
+        // Determine how much to scale down the image
+        int scaleFactor = Math.min(photoW / targetW, photoH / targetH);
+
+        // Decode the image file into a Bitmap sized to fill the View
+        bmOptions.inJustDecodeBounds = false;
+        bmOptions.inSampleSize = scaleFactor;
+        bmOptions.inPurgeable = true;
+
+        Bitmap bitmap = BitmapFactory.decodeFile(imageUri.getPath(), bmOptions);
+        mImageView.setImageBitmap(bitmap);
+
+        mBitmap = bitmap;
     }
 
-    private void deleteImg() {
-        String filename = "CameraApp.png";
-        File file = new File(Environment.getExternalStorageDirectory().toString() + "/CameraApp/" + filename);
-        File dir = new File(Environment.getExternalStorageDirectory().toString() + "/CameraApp/");
 
-        if (file.exists()) {
-            if(file.delete()) Log.d(LOGTAG, "Deleted file");
-        }
+    private File createImageFile() throws IOException {
+        // Create an image file name
+        String timeStamp = new SimpleDateFormat("yyyyMMdd_HHmmss").format(new Date());
+        String imageFileName = "JPEG_" + timeStamp + "_";
+        File storageDir = Environment.getExternalStoragePublicDirectory(
+                Environment.DIRECTORY_PICTURES);
+        File image = File.createTempFile(
+                imageFileName,  /* prefix */
+                ".jpg",         /* suffix */
+                storageDir      /* directory */
+        );
 
-        if (dir.exists()) {
-            if(dir.delete()) Log.d(LOGTAG, "Deleted directory");
-        }
+        return image;
     }
 }
